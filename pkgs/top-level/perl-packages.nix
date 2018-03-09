@@ -10735,7 +10735,8 @@ let self = _self // overrides; _self = with self; {
       sha256 = "1q3lz168q081iwl9jg21fbzhp9la79gav9mv6nmh2jab83s2l3mj";
     };
 
-    buildInputs = with pkgs; [ mesa mesa_glu freeglut xorg.libX11 xorg.libXi xorg.libXmu xorg.libXext xdummy ];
+    # FIXME: try with libGL + libGLU instead of libGLU_combined
+    buildInputs = with pkgs; [ libGLU_combined libGLU freeglut xorg.libX11 xorg.libXi xorg.libXmu xorg.libXext xdummy ];
 
     patches = [ ../development/perl-modules/perl-opengl.patch ];
 
@@ -11373,6 +11374,47 @@ let self = _self // overrides; _self = with self; {
       description = "tools for helping translation of documentation";
       license = with stdenv.lib.licenses; [ gpl2 ];
     };
+  };
+
+  POE = buildPerlPackage rec {
+    name = "POE-1.367";
+    patches = [
+      ../development/perl-modules/perl-POE-1.367-pod_linkcheck.patch
+      ../development/perl-modules/perl-POE-1.367-pod_no404s.patch
+    ];
+    src = fetchurl {
+      url = "mirror://cpan/authors/id/R/RC/RCAPUTO/POE-1.367.tar.gz";
+      sha256 = "0b9s7yxaa2lgzyi56brgygycfjk7lz33d1ddvc1wvwwvm45p4wmp";
+    };
+    # N.B. removing TestPodLinkCheck from buildInputs because tests requiring
+    # this module don't disable themselves when "run_network_tests" is
+    # not present (see below).
+    buildInputs = [
+      Curses EmailMIME HTTPMessage IOTty LWPProtocolHttps POETestLoops
+      TermReadKey TestPod TestPodCoverage TestPodNo404s YAML
+    ];
+    propagatedBuildInputs = [ pkgs.cacert IOPipely ];
+    meta = {
+      maintainers = [ maintainers.limeytexan ];
+      description = "Portable multitasking and networking framework for any event loop";
+      license = stdenv.lib.licenses.artistic2;
+    };
+    preCheck = ''
+      set -x
+
+      : Makefile.PL touches the following file as a "marker" to indicate
+      : it should perform tests which use the network. Delete this file
+      : for sandbox builds.
+      rm -f run_network_tests
+
+      : Certs are required if not running in a sandbox.
+      export SSL_CERT_FILE=${pkgs.cacert.out}/etc/ssl/certs/ca-bundle.crt
+
+      : The following flag enables extra tests not normally performed.
+      export RELEASE_TESTING=1
+
+      set +x
+    '';
   };
 
   POETestLoops = buildPerlPackage rec {
@@ -12319,16 +12361,17 @@ let self = _self // overrides; _self = with self; {
   };
 
   Socket = buildPerlPackage {
-    name = "Socket-2.020";
+    name = "Socket-2.027";
     src = fetchurl {
-      url = mirror://cpan/authors/id/P/PE/PEVANS/Socket-2.020.tar.gz;
-      sha256 = "9ad4174c45b4c31d5e0b8019ada1fc767093849e77f268f0d1831eeb891dfdd7";
+      url = mirror://cpan/authors/id/P/PE/PEVANS/Socket-2.027.tar.gz;
+      sha256 = "1a725fbqx6bjzjf63bgs5wvzd20kffz1f94pbmv1670p9m4i270l";
     };
     postPatch = ''
       # requires network access
-      rm t/getnameinfo.t
+      rm t/getnameinfo.t t/getaddrinfo.t
     '';
     meta = {
+      homepage = https://metacpan.org/pod/Socket;
       description = "Networking constants and support functions";
       license = with stdenv.lib.licenses; [ artistic1 gpl1Plus ];
     };
@@ -14722,6 +14765,16 @@ let self = _self // overrides; _self = with self; {
       sha256 = "0dig1zlglm8rwm8fhnz087lx6gixj9jx10kxn1fx3swdkfblhsmf";
     };
     perlPreHook = "export LD=$CC";
+    perlPostHook = stdenv.lib.optionalString stdenv.isDarwin ''
+      oldPath="$(pwd)/btparse/src/libbtparse.dylib"
+      newPath="$out/lib/libbtparse.dylib"
+
+      install_name_tool -id "$newPath" "$newPath"
+      install_name_tool -change "$oldPath" "$newPath" "$out/bin/biblex"
+      install_name_tool -change "$oldPath" "$newPath" "$out/bin/bibparse"
+      install_name_tool -change "$oldPath" "$newPath" "$out/bin/dumpnames"
+      install_name_tool -change "$oldPath" "$newPath" "$out/lib/perl5/site_perl/5.24.3/darwin-2level/auto/Text/BibTeX/BibTeX.bundle"
+    '';
     meta = {
       description = "Interface to read and parse BibTeX files";
       license = with stdenv.lib.licenses; [ artistic1 gpl1Plus ];
@@ -15989,7 +16042,7 @@ let self = _self // overrides; _self = with self; {
       url = "mirror://cpan/authors/id/M/MB/MBARBON/${name}.tar.gz";
       sha256 = "1q4gvj4gdx4l8k4mkgiix24p9mdfy1miv7abidf0my3gy2gw5lka";
     };
-    propagatedBuildInputs = [ Wx OpenGL pkgs.mesa_glu ];
+    propagatedBuildInputs = [ Wx OpenGL pkgs.libGLU ];
     doCheck = false;
   };
 
